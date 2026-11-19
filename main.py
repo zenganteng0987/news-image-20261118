@@ -1,46 +1,74 @@
-"""Publish THE DAILY ATLAS for Wednesday 18 November 2026.
+#!/usr/bin/env python3
+"""Deliver the Daily Atlas front page for the 18 November 2026 edition.
 
-The image bundled with this entry (``entry.png``) is a one-page summary of
-the world news of Wednesday 18 November 2026. It was composed
-programmatically with PIL from that day's wire reports: 32 verified
-Wednesday stories arranged as 15 illustrated cards, a BY THE NUMBERS
-strip, and a dotted world map with a pin for every story.
-
-This program simply publishes the composed page: it copies ``entry.png``
-from the directory containing this file to ``/output/entry.png``, where
-the competition harness expects to find it. The copy is a plain byte
-copy, so running the program any number of times always produces a
-byte-identical result.
-
-Python 3.13, standard library only, no network access.
+The finished artwork lives beside this script as ``entry.png``.  When the
+grader runs this file, the picture is validated and then placed, byte for
+byte, at ``/output/entry.png`` where the judging pipeline expects it.
 """
 
 import shutil
 import sys
 from pathlib import Path
 
-SOURCE = Path(__file__).resolve().parent / "entry.png"
-DESTINATION = Path("/output/entry.png")
+# Every PNG file opens with these eight bytes; anything else is not the
+# artwork we shipped and must not be handed to the grader.
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
-
-def check_source() -> None:
-    """Fail early with a clear message if the bundled page is unusable."""
-    if not SOURCE.is_file():
-        raise SystemExit(f"error: bundled image not found: {SOURCE}")
-    with SOURCE.open("rb") as handle:
-        signature = handle.read(len(PNG_SIGNATURE))
-    if signature != PNG_SIGNATURE:
-        raise SystemExit(f"error: bundled image is not a PNG file: {SOURCE}")
+OUTPUT_FOLDER = Path("/output")
+OUTPUT_NAME = "entry.png"
 
 
-def main() -> int:
-    check_source()
-    DESTINATION.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(SOURCE, DESTINATION)
-    print(f"Published {SOURCE.name} -> {DESTINATION} ({DESTINATION.stat().st_size} bytes)")
+def find_artwork() -> Path:
+    """Return the path of the image stored next to this script."""
+    artwork = Path(__file__).resolve().parent / "entry.png"
+    if not artwork.is_file():
+        raise SystemExit(
+            f"cannot continue: the image file is missing ({artwork})"
+        )
+    return artwork
+
+
+def confirm_png_format(artwork: Path) -> None:
+    """Refuse to publish anything whose header is not a PNG header."""
+    with artwork.open("rb") as stream:
+        opening = stream.read(len(PNG_SIGNATURE))
+    if opening != PNG_SIGNATURE:
+        raise SystemExit(
+            f"cannot continue: {artwork.name} fails the PNG signature test"
+        )
+
+
+def deliver(artwork: Path) -> Path:
+    """Copy the artwork into the output folder and return its new path."""
+    OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+    destination = OUTPUT_FOLDER / OUTPUT_NAME
+    shutil.copyfile(artwork, destination)
+    return destination
+
+
+def announce_delivery(destination: Path) -> None:
+    """Print a one-line receipt for the copy that was just published.
+
+    The receipt states the delivered file's size in bytes together with
+    its SHA-256 digest, so a human (or a log scraper) can confirm at a
+    glance that the bytes in /output are exactly the bytes that shipped.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+    print(
+        f"delivered {destination}: "
+        f"{destination.stat().st_size} bytes, sha256 {digest}"
+    )
+
+
+def run() -> int:
+    artwork = find_artwork()
+    confirm_png_format(artwork)
+    destination = deliver(artwork)
+    announce_delivery(destination)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())
